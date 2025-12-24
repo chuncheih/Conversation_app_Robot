@@ -6,6 +6,18 @@ from dotenv import find_dotenv, load_dotenv
 
 logger = logging.getLogger(__name__)
 
+# ---- OpenAI-compatible endpoints ----
+def normalize_base_url(base_url: str | None) -> str | None:
+    """Normalize base URLs for OpenAI-compatible endpoints."""
+    if not base_url:
+        return None
+    cleaned = base_url.strip().rstrip("/")
+    if not cleaned:
+        return None
+    if cleaned.endswith("/v1"):
+        return cleaned
+    return f"{cleaned}/v1"
+
 # Locate .env file (search upward from current working directory)
 dotenv_path = find_dotenv(usecwd=True)
 
@@ -22,6 +34,7 @@ class Config:
 
     # Required
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # The key is downloaded in console.py if needed
+    OPENAI_BASE_URL = normalize_base_url(os.getenv("OPENAI_BASE_URL"))
 
     # Optional
     MODEL_NAME = os.getenv("MODEL_NAME", "gpt-realtime")
@@ -30,6 +43,7 @@ class Config:
     HF_TOKEN = os.getenv("HF_TOKEN")  # Optional, falls back to hf auth login if not set
 
     logger.debug(f"Model: {MODEL_NAME}, HF_HOME: {HF_HOME}, Vision Model: {LOCAL_VISION_MODEL}")
+    logger.debug(f"OpenAI base URL: {OPENAI_BASE_URL}")
 
     REACHY_MINI_CUSTOM_PROFILE = os.getenv("REACHY_MINI_CUSTOM_PROFILE")
     logger.debug(f"Custom Profile: {REACHY_MINI_CUSTOM_PROFILE}")

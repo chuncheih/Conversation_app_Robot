@@ -22,7 +22,7 @@ from scipy.signal import resample
 
 from reachy_mini import ReachyMini
 from reachy_mini.media.media_manager import MediaBackend
-from reachy_mini_conversation_app.config import config
+from reachy_mini_conversation_app.config import config, normalize_base_url
 from reachy_mini_conversation_app.openai_realtime import OpenaiRealtimeHandler
 from reachy_mini_conversation_app.headless_personality_ui import mount_personality_routes
 
@@ -106,31 +106,65 @@ class LocalStream:
         except Exception:
             return []
 
-    def _persist_api_key(self, key: str) -> None:
-        """Persist API key to environment and instance ``.env`` if possible.
+    def _persist_openai_settings(
+        self,
+        key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        model_name: Optional[str] = None,
+    ) -> None:
+        """Persist OpenAI settings to environment and instance ``.env`` if possible.
 
         Behavior:
-        - Always sets ``OPENAI_API_KEY`` in process env and in-memory config.
+        - Sets ``OPENAI_API_KEY`` and ``OPENAI_BASE_URL`` in process env/config when provided.
+        - Sets ``MODEL_NAME`` in process env/config when provided.
         - Writes/updates ``<instance_path>/.env``:
           * If ``.env`` exists, replaces/append OPENAI_API_KEY line.
           * Else, copies template from ``<instance_path>/.env.example`` when present,
             otherwise falls back to the packaged template
             ``reachy_mini_conversation_app/.env.example``.
-          * Ensures the resulting file contains the full template plus the key.
+          * Ensures the resulting file contains the full template plus the settings.
         - Loads the written ``.env`` into the current process environment.
         """
-        k = (key or "").strip()
-        if not k:
-            return
-        # Update live process env and config so consumers see it immediately
-        try:
-            os.environ["OPENAI_API_KEY"] = k
-        except Exception:  # best-effort
-            pass
-        try:
-            config.OPENAI_API_KEY = k
-        except Exception:
-            pass
+        k = (key or "").strip() if key is not None else None
+        base_url_norm = normalize_base_url(base_url) if base_url is not None else None
+        model = (model_name or "").strip() if model_name is not None else None
+
+        if k:
+            # Update live process env and config so consumers see it immediately
+            try:
+                os.environ["OPENAI_API_KEY"] = k
+            except Exception:  # best-effort
+                pass
+            try:
+                config.OPENAI_API_KEY = k
+            except Exception:
+                pass
+
+        if base_url is not None:
+            try:
+                if base_url_norm:
+                    os.environ["OPENAI_BASE_URL"] = base_url_norm
+                else:
+                    os.environ.pop("OPENAI_BASE_URL", None)
+            except Exception:
+                pass
+            try:
+                config.OPENAI_BASE_URL = base_url_norm
+            except Exception:
+                pass
+
+        if model_name is not None:
+            try:
+                if model:
+                    os.environ["MODEL_NAME"] = model
+                else:
+                    os.environ.pop("MODEL_NAME", None)
+            except Exception:
+                pass
+            try:
+                config.MODEL_NAME = model or "gpt-realtime"
+            except Exception:
+                pass
 
         if not self._instance_path:
             return
@@ -138,17 +172,44 @@ class LocalStream:
             inst = Path(self._instance_path)
             env_path = inst / ".env"
             lines = self._read_env_lines(env_path)
-            replaced = False
-            for i, ln in enumerate(lines):
-                if ln.strip().startswith("OPENAI_API_KEY="):
-                    lines[i] = f"OPENAI_API_KEY={k}"
-                    replaced = True
-                    break
-            if not replaced:
-                lines.append(f"OPENAI_API_KEY={k}")
+            if k is not None:
+                replaced = False
+                for i, ln in enumerate(lines):
+                    if ln.strip().startswith("OPENAI_API_KEY="):
+                        lines[i] = f"OPENAI_API_KEY={k}"
+                        replaced = True
+                        break
+                if not replaced:
+                    lines.append(f"OPENAI_API_KEY={k}")
+
+            if base_url is not None:
+                replaced = False
+                for i, ln in enumerate(list(lines)):
+                    if ln.strip().startswith("OPENAI_BASE_URL="):
+                        if base_url_norm:
+                            lines[i] = f"OPENAI_BASE_URL={base_url_norm}"
+                        else:
+                            lines.pop(i)
+                        replaced = True
+                        break
+                if base_url_norm and not replaced:
+                    lines.append(f"OPENAI_BASE_URL={base_url_norm}")
+
+            if model_name is not None:
+                replaced = False
+                for i, ln in enumerate(list(lines)):
+                    if ln.strip().startswith("MODEL_NAME="):
+                        if model:
+                            lines[i] = f"MODEL_NAME={model}"
+                        else:
+                            lines.pop(i)
+                        replaced = True
+                        break
+                if model and not replaced:
+                    lines.append(f"MODEL_NAME={model}")
             final_text = "\n".join(lines) + "\n"
             env_path.write_text(final_text, encoding="utf-8")
-            logger.info("Persisted OPENAI_API_KEY to %s", env_path)
+            logger.info("Persisted OpenAI settings to %s", env_path)
 
             # Load the newly written .env into this process to ensure downstream imports see it
             try:
@@ -239,6 +300,12 @@ class LocalStream:
 
         class ApiKeyPayload(BaseModel):
             openai_api_key: str
+            openai_base_url: Optional[str] = None
+            openai_model: Optional[str] = None
+
+        def _models_url(base_url: Optional[str]) -> str:
+            norm = normalize_base_url(base_url)
+            return f"{norm}/models" if norm else "https://api.openai.com/v1/models"
 
         # GET / -> index.html
         @self._settings_app.get("/")
@@ -254,7 +321,13 @@ class LocalStream:
         @self._settings_app.get("/status")
         def _status() -> JSONResponse:
             has_key = bool(config.OPENAI_API_KEY and str(config.OPENAI_API_KEY).strip())
-            return JSONResponse({"has_key": has_key})
+            return JSONResponse(
+                {
+                    "has_key": has_key,
+                    "base_url": config.OPENAI_BASE_URL or "",
+                    "model_name": config.MODEL_NAME or "gpt-realtime",
+                }
+            )
 
         # GET /ready -> whether backend finished loading tools
         @self._settings_app.get("/ready")
@@ -272,7 +345,7 @@ class LocalStream:
             key = (payload.openai_api_key or "").strip()
             if not key:
                 return JSONResponse({"ok": False, "error": "empty_key"}, status_code=400)
-            self._persist_api_key(key)
+            self._persist_openai_settings(key, payload.openai_base_url, payload.openai_model)
             return JSONResponse({"ok": True})
 
         # POST /validate_api_key -> validate key without persisting it
@@ -288,7 +361,7 @@ class LocalStream:
 
                 headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
                 async with httpx.AsyncClient(timeout=10.0) as client:
-                    response = await client.get("https://api.openai.com/v1/models", headers=headers)
+                    response = await client.get(_models_url(payload.openai_base_url or config.OPENAI_BASE_URL), headers=headers)
                     if response.status_code == 200:
                         return JSONResponse({"valid": True})
                     elif response.status_code == 401:
@@ -347,7 +420,7 @@ class LocalStream:
                 if key and key.strip():
                     logger.info("Successfully downloaded API key from HuggingFace")
                     # Persist it immediately
-                    self._persist_api_key(key)
+                    self._persist_openai_settings(key)
             except Exception as e:
                 logger.warning(f"Failed to download API key from HuggingFace: {e}")
 

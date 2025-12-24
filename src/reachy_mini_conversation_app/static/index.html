@@ -42,6 +42,12 @@
         <p class="muted">Paste your API key once and we will store it locally for the headless conversation loop.</p>
         <label for="api-key">OpenAI API Key</label>
         <input id="api-key" type="password" placeholder="sk-..." autocomplete="off" />
+        <label for="api-base-url">OpenAI Base URL (optional)</label>
+        <input id="api-base-url" type="text" placeholder="https://api.openai.com/v1" autocomplete="off" />
+        <p class="hint">Use this for OpenAI-compatible providers or local gateways.</p>
+        <label for="api-model-name">Model name</label>
+        <input id="api-model-name" type="text" placeholder="gpt-realtime" autocomplete="off" />
+        <p class="hint">Defaults to gpt-realtime if left blank.</p>
         <div class="actions">
           <button id="save-btn">Save key</button>
           <p id="status" class="status"></p>

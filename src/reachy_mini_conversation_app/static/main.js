@@ -57,8 +57,8 @@ async function waitForPersonalityData(timeoutMs = 15000) {
   }
 }
 
-async function validateKey(key) {
-  const body = { openai_api_key: key };
+async function validateKey(key, baseUrl) {
+  const body = { openai_api_key: key, openai_base_url: baseUrl || "" };
   const resp = await fetch("/validate_api_key", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -71,8 +71,12 @@ async function validateKey(key) {
   return data;
 }
 
-async function saveKey(key) {
-  const body = { openai_api_key: key };
+async function saveKey(key, baseUrl, modelName) {
+  const body = {
+    openai_api_key: key,
+    openai_base_url: baseUrl || "",
+    openai_model: modelName || "",
+  };
   const resp = await fetch("/openai_api_key", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -189,6 +193,8 @@ async function init() {
   const saveBtn = document.getElementById("save-btn");
   const changeKeyBtn = document.getElementById("change-key-btn");
   const input = document.getElementById("api-key");
+  const baseUrlInput = document.getElementById("api-base-url");
+  const modelInput = document.getElementById("api-model-name");
 
   // Personality elements
   const pSelect = document.getElementById("personality-select");
@@ -215,6 +221,13 @@ async function init() {
   show(personalityPanel, false);
 
   const st = (await waitForStatus()) || { has_key: false };
+  if (st.base_url && baseUrlInput) {
+    baseUrlInput.value = st.base_url;
+  }
+  if (st.model_name && modelInput) {
+    modelInput.value = st.model_name;
+  }
+
   if (st.has_key) {
     statusEl.textContent = "";
     show(configuredPanel, true);
@@ -236,6 +249,8 @@ async function init() {
 
   saveBtn.addEventListener("click", async () => {
     const key = input.value.trim();
+    const baseUrl = baseUrlInput ? baseUrlInput.value.trim() : "";
+    const modelName = modelInput ? modelInput.value.trim() : "";
     if (!key) {
       statusEl.textContent = "Please enter a valid key.";
       statusEl.className = "status warn";
@@ -247,7 +262,7 @@ async function init() {
     input.classList.remove("error");
     try {
       // First validate the key
-      const validation = await validateKey(key);
+      const validation = await validateKey(key, baseUrl);
       if (!validation.valid) {
         statusEl.textContent = "Invalid API key. Please check your key and try again.";
         statusEl.className = "status error";
@@ -258,7 +273,7 @@ async function init() {
       // If valid, save it
       statusEl.textContent = "Key valid! Saving...";
       statusEl.className = "status ok";
-      await saveKey(key);
+      await saveKey(key, baseUrl, modelName);
       statusEl.textContent = "Saved. Reloading…";
       statusEl.className = "status ok";
       window.location.reload();

@@ -16,7 +16,7 @@ from numpy.typing import NDArray
 from scipy.signal import resample
 from websockets.exceptions import ConnectionClosedError
 
-from reachy_mini_conversation_app.config import config
+from reachy_mini_conversation_app.config import config, normalize_base_url
 from reachy_mini_conversation_app.prompts import get_session_voice, get_session_instructions
 from reachy_mini_conversation_app.tools.core_tools import (
     ToolDependencies,
@@ -168,7 +168,11 @@ class OpenaiRealtimeHandler(AsyncStreamHandler):
                 logger.warning("OPENAI_API_KEY missing. Proceeding with a placeholder (tests/offline).")
                 openai_api_key = "DUMMY"
 
-        self.client = AsyncOpenAI(api_key=openai_api_key)
+        client_kwargs = {"api_key": openai_api_key}
+        base_url = normalize_base_url(getattr(config, "OPENAI_BASE_URL", None))
+        if base_url:
+            client_kwargs["base_url"] = base_url
+        self.client = AsyncOpenAI(**client_kwargs)
 
         max_attempts = 3
         for attempt in range(1, max_attempts + 1):
@@ -709,6 +713,18 @@ class OpenaiRealtimeHandler(AsyncStreamHandler):
                     break
             if not replaced:
                 content_lines.append(f"OPENAI_API_KEY={key}")
+
+            # Persist base URL if configured
+            base_url = normalize_base_url(getattr(config, "OPENAI_BASE_URL", None))
+            if base_url:
+                replaced = False
+                for i, line in enumerate(content_lines):
+                    if line.strip().startswith("OPENAI_BASE_URL="):
+                        content_lines[i] = f"OPENAI_BASE_URL={base_url}"
+                        replaced = True
+                        break
+                if not replaced:
+                    content_lines.append(f"OPENAI_BASE_URL={base_url}")
 
             # Ensure file ends with newline
             final_text = "\n".join(content_lines) + "\n"
