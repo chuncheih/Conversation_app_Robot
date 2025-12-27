@@ -573,11 +573,17 @@ class OpenaiRealtimeHandler(AsyncStreamHandler):
         fallback = [
             "cedar",
             "alloy",
-            "aria",
+            "ash",
             "ballad",
-            "verse",
-            "sage",
             "coral",
+            "echo",
+            "fable",
+            "marin",
+            "nova",
+            "onyx",
+            "sage",
+            "shimmer",
+            "verse"
         ]
         try:
             # Best effort discovery; safe-guarded for unexpected shapes
