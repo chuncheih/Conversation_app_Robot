@@ -571,13 +571,16 @@ class OpenaiRealtimeHandler(AsyncStreamHandler):
         """
         # Conservative fallback list with default first
         fallback = [
-            "cedar",
             "alloy",
-            "aria",
+            "ash",
             "ballad",
-            "verse",
-            "sage",
+            "cedar",
             "coral",
+            "echo",
+            "marin",
+            "sage",
+            "shimmer",
+            "verse"
         ]
         try:
             # Best effort discovery; safe-guarded for unexpected shapes
